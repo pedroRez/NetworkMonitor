@@ -1,19 +1,17 @@
 # Network Monitor (MVP)
 
-Este repositório inicia um MVP para monitoramento da rede local usando um **backend em Python** com **FastAPI** e **PostgreSQL**.
-A proposta é permitir:
+O Network Monitor é um MVP para monitoramento de rede local. O backend expõe APIs
+para registrar dispositivos, armazenar amostras de tráfego e salvar credenciais
+do roteador. A interface web (React) apresenta um painel com métricas e permite
+configurar o IP e as credenciais do roteador.
 
-- Descoberta/registro de dispositivos (IP/MAC).
-- Atribuição de nomes amigáveis aos dispositivos.
-- Armazenamento de amostras de tráfego por dispositivo (coletadas via SNMP/port mirroring em um coletor separado).
+## Componentes
 
-## Por que esta abordagem?
+- Backend: FastAPI + SQLAlchemy
+- Banco de dados: PostgreSQL
+- Frontend: React + Vite
 
-- **SNMP** (no roteador/switch gerenciável) é uma fonte confiável para estatísticas por dispositivo.
-- **PostgreSQL** armazena o inventário de dispositivos e as métricas históricas.
-- **FastAPI** facilita expor APIs para um painel web/desktop/móvel.
-
-## Estrutura
+## Estrutura do repositório
 
 ```
 app/
@@ -23,15 +21,53 @@ app/
   schemas.py     # Modelos Pydantic
   crud.py        # Operações de banco
   snmp.py        # Placeholder para coleta SNMP
+web/             # Interface web em React
 requirements.txt
 ```
 
-## Configuração rápida
+## Requisitos
 
-1. Crie um banco e defina a variável `DATABASE_URL`, por exemplo:
+- Python 3.9+
+- Node.js 18+
+- PostgreSQL
+
+## Configuração do banco de dados
+
+1. Crie o banco com codificação UTF-8 (exemplo):
 
 ```
-export DATABASE_URL="postgresql+psycopg2://usuario:senha@localhost:5432/network_monitor"
+CREATE DATABASE network_monitor ENCODING 'UTF8';
+```
+
+2. Ajuste o arquivo `.env` na raiz do projeto:
+
+```
+DATABASE_URL=postgresql+psycopg2://usuario:senha@localhost:5432/network_monitor
+DB_CLIENT_ENCODING=UTF8
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+```
+
+3. As tabelas são criadas automaticamente na primeira execução da API
+   (SQLAlchemy `create_all`).
+
+## Backend (FastAPI)
+
+1. Crie e ative o ambiente virtual:
+
+```
+python -m venv .venv
+```
+
+Windows (PowerShell):
+
+```
+.venv\Scripts\Activate.ps1
+```
+
+Linux/macOS:
+
+```
+source .venv/bin/activate
 ```
 
 2. Instale as dependências:
@@ -46,19 +82,56 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-A API estará em `http://127.0.0.1:8000`.
+4. Endereços úteis:
 
-## Interface de configuração do roteador
+- API: `http://127.0.0.1:8000`
+- Healthcheck: `http://127.0.0.1:8000/health`
+- Documentação Swagger: `http://127.0.0.1:8000/docs`
+- Página de configuração do roteador: `http://127.0.0.1:8000/setup`
 
-Abra `http://127.0.0.1:8000/setup` para inserir o IP do roteador, usuário e senha.
-Esses dados são salvos na tabela `router_config` para o coletor SNMP/integração
-posterior usar como credenciais de acesso.
+## Frontend (React)
 
-> Observação: neste MVP as credenciais são armazenadas em texto puro. Em produção,
-> use um cofre de segredos ou criptografia em repouso.
+1. Ajuste a URL da API em `web/.env`:
 
-## Próximos passos sugeridos
+```
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
 
-- Adicionar um coletor SNMP real (ex.: `pysnmp`) para gravar amostras em `traffic_samples`.
-- Implementar descoberta automática de dispositivos (ARP scan ou via SNMP).
-- Criar dashboard web (React/Vue) ou app desktop/mobile consumindo a API.
+2. Instale e execute:
+
+```
+cd web
+npm install
+npm run dev
+```
+
+3. Acesse:
+
+- `http://localhost:5173`
+
+## Funcionalidades principais
+
+- Cadastro de dispositivos (IP, MAC e nome amigável).
+- Registro de amostras de tráfego por dispositivo.
+- Cadastro e atualização de credenciais do roteador.
+- Painel web com indicadores e filtro de tráfego por dispositivo.
+
+## Principais endpoints da API
+
+- `GET /health`
+- `GET /devices`
+- `POST /devices`
+- `PATCH /devices/{device_id}`
+- `GET /traffic`
+- `POST /traffic`
+- `GET /router-config`
+- `PUT /router-config`
+
+## Codificação de caracteres (padrão brasileiro)
+
+- Os arquivos do projeto estão em UTF-8 para preservar acentos.
+- O cliente do banco usa UTF-8 via `DB_CLIENT_ENCODING` no `.env`.
+
+## Observação de segurança
+
+As credenciais do roteador são armazenadas em texto puro neste MVP.
