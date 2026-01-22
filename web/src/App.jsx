@@ -3,12 +3,17 @@ import {
   getDevices,
   getHealth,
   getRouterConfig,
+  getRouterMetrics,
   getTraffic,
   saveRouterConfig
 } from "./api";
 
 const emptyConfig = {
   router_ip: "",
+  access_mode: "local_admin",
+  snmp_enabled: false,
+  snmp_community: "",
+  snmp_port: 161,
   username: "",
   password: ""
 };
@@ -52,6 +57,23 @@ const lastUpdatedLabel = (value) => {
   return value.toLocaleTimeString("pt-BR");
 };
 
+const statusClass = (value) => {
+  if (value === "up" || value === "online") {
+    return "ok";
+  }
+  if (value === "down" || value === "offline") {
+    return "error";
+  }
+  return "warn";
+};
+
+const statusLabel = (value) => {
+  if (!value) {
+    return "—";
+  }
+  return String(value).replace(/_/g, " ");
+};
+
 export default function App() {
   const [health, setHealth] = useState({ status: "carregando" });
   const [devices, setDevices] = useState([]);
@@ -61,10 +83,48 @@ export default function App() {
     type: "idle",
     message: ""
   });
+  const [routerMetrics, setRouterMetrics] = useState(null);
+  const [routerMetricsStatus, setRouterMetricsStatus] = useState({
+    type: "idle",
+    message: ""
+  });
   const [filterDevice, setFilterDevice] = useState("all");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  const fetchRouterMetrics = async () => {
+    setRouterMetricsStatus({ type: "loading", message: "Coletando metricas..." });
+    try {
+      const data = await getRouterMetrics();
+      setRouterMetrics(data);
+      if (data?.monitoring_mode === "snmp") {
+        if (data?.snmp_limited) {
+          setRouterMetricsStatus({
+            type: "warn",
+            message: "SNMP limitado. Usando ping."
+          });
+        } else {
+          setRouterMetricsStatus({ type: "success", message: "SNMP ativo." });
+        }
+      } else if (data?.monitoring_mode === "passive") {
+        setRouterMetricsStatus({
+          type: "warn",
+          message: data?.snmp_error
+            ? "SNMP falhou. Monitoramento passivo."
+            : "Monitoramento passivo."
+        });
+      } else {
+        setRouterMetricsStatus({ type: "idle", message: "" });
+      }
+    } catch (error) {
+      setRouterMetrics(null);
+      setRouterMetricsStatus({
+        type: "error",
+        message: error?.message ?? "Erro ao coletar metricas."
+      });
+    }
+  };
 
   const refreshData = async () => {
     setLoading(true);
@@ -102,13 +162,19 @@ export default function App() {
 
     if (routerResult.status === "fulfilled") {
       if (routerResult.value) {
-        setRouterConfig(routerResult.value);
+        const nextConfig = { ...emptyConfig, ...routerResult.value };
+        setRouterConfig(nextConfig);
+        await fetchRouterMetrics();
       } else {
         setRouterConfig(emptyConfig);
+        setRouterMetrics(null);
+        setRouterMetricsStatus({ type: "idle", message: "" });
       }
     } else {
       setRouterConfig(emptyConfig);
-      nextErrors.router = "Não foi possível carregar as credenciais.";
+      setRouterMetrics(null);
+      setRouterMetricsStatus({ type: "error", message: "Router config indisponivel." });
+      nextErrors.router = "Nao foi possivel carregar a configuracao.";
     }
 
     setErrors(nextErrors);
@@ -138,30 +204,70 @@ export default function App() {
     );
   }, [filteredTraffic]);
 
+  const requiresCredentials = routerConfig.access_mode === "local_admin";
+  const snmpConfigured = routerConfig.snmp_enabled && routerConfig.snmp_community;
+  const routerInterfaces = routerMetrics?.interfaces ?? [];
+
+  const routes = [
+    {
+      id: "router-config",
+      label: "Configurar roteador",
+      description: "Modo de acesso e SNMP"
+    },
+    {
+      id: "router-monitor",
+      label: "Monitoramento",
+      description: "Uptime, status e trafego"
+    },
+    {
+      id: "devices",
+      label: "Dispositivos",
+      description: "Inventario da rede"
+    },
+    {
+      id: "traffic",
+      label: "Trafego",
+      description: "Amostras por dispositivo"
+    }
+  ];
+
+  const scrollToSection = (sectionId) => {
+    const section = document.getElementById(sectionId);
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   const handleRouterChange = (event) => {
-    const { name, value } = event.target;
+    const { name, value, type, checked } = event.target;
     setRouterConfig((prev) => ({
       ...prev,
-      [name]: value
+      [name]: type === "checkbox" ? checked : value
     }));
   };
 
   const handleRouterSubmit = async (event) => {
     event.preventDefault();
-    setRouterStatus({ type: "loading", message: "Salvando credenciais..." });
+    setRouterStatus({ type: "loading", message: "Salvando configuracao..." });
+    const snmpPort = Number(routerConfig.snmp_port) || 161;
     const payload = {
       router_ip: routerConfig.router_ip,
-      username: routerConfig.username,
-      password: routerConfig.password
+      access_mode: routerConfig.access_mode,
+      snmp_enabled: routerConfig.snmp_enabled,
+      snmp_community: routerConfig.snmp_enabled ? routerConfig.snmp_community : null,
+      snmp_port: routerConfig.snmp_enabled ? snmpPort : 161,
+      username: requiresCredentials ? routerConfig.username : null,
+      password: requiresCredentials ? routerConfig.password : null
     };
     try {
       const saved = await saveRouterConfig(payload);
-      setRouterConfig(saved ?? routerConfig);
-      setRouterStatus({ type: "success", message: "Configuração salva com sucesso." });
+      setRouterConfig({ ...emptyConfig, ...(saved ?? routerConfig) });
+      setRouterStatus({ type: "success", message: "Configuracao salva com sucesso." });
+      await fetchRouterMetrics();
     } catch (error) {
       setRouterStatus({
         type: "error",
-        message: error?.message ?? "Erro ao salvar configuração."
+        message: error?.message ?? "Erro ao salvar configuracao."
       });
     }
   };
@@ -209,12 +315,26 @@ export default function App() {
         </div>
       </header>
 
+      <section className="route-cards">
+        {routes.map((route) => (
+          <button
+            className="route-card"
+            key={route.id}
+            type="button"
+            onClick={() => scrollToSection(route.id)}
+          >
+            <span className="route-label">{route.label}</span>
+            <span className="route-description">{route.description}</span>
+          </button>
+        ))}
+      </section>
+
       <section className="grid">
-        <div className="panel">
+        <div className="panel" id="router-config">
           <div className="panel-header">
             <div>
-              <h2>Credenciais do roteador</h2>
-              <p>Informe o IP e as credenciais para autenticação SNMP ou web.</p>
+              <h2>Acesso ao roteador</h2>
+              <p>Informe o IP, modo de acesso e configuracao SNMP.</p>
             </div>
           </div>
           <form className="form" onSubmit={handleRouterSubmit}>
@@ -230,30 +350,94 @@ export default function App() {
                 />
               </label>
               <label>
-                Usuário
-                <input
-                  name="username"
-                  value={routerConfig.username}
+                Modo de acesso
+                <select
+                  name="access_mode"
+                  value={routerConfig.access_mode}
                   onChange={handleRouterChange}
-                  placeholder="admin"
-                  required
+                >
+                  <option value="local_admin">Local admin</option>
+                  <option value="cloud_only">Cloud-only</option>
+                  <option value="isp_managed">ISP managed</option>
+                </select>
+              </label>
+              <label className="toggle">
+                SNMP habilitado
+                <input
+                  type="checkbox"
+                  name="snmp_enabled"
+                  checked={routerConfig.snmp_enabled}
+                  onChange={handleRouterChange}
                 />
               </label>
-              <label>
-                Senha
-                <input
-                  type="password"
-                  name="password"
-                  value={routerConfig.password}
-                  onChange={handleRouterChange}
-                  placeholder="••••••••"
-                  required
-                />
-              </label>
+              {routerConfig.snmp_enabled ? (
+                <>
+                  <label>
+                    Comunidade SNMP
+                    <input
+                      name="snmp_community"
+                      value={routerConfig.snmp_community}
+                      onChange={handleRouterChange}
+                      placeholder="public"
+                      required={routerConfig.snmp_enabled}
+                    />
+                  </label>
+                  <label>
+                    Porta SNMP
+                    <input
+                      type="number"
+                      min="1"
+                      max="65535"
+                      name="snmp_port"
+                      value={routerConfig.snmp_port}
+                      onChange={handleRouterChange}
+                      required={routerConfig.snmp_enabled}
+                    />
+                  </label>
+                </>
+              ) : null}
+              {requiresCredentials ? (
+                <>
+                  <label>
+                    Usuario
+                    <input
+                      name="username"
+                      value={routerConfig.username}
+                      onChange={handleRouterChange}
+                      placeholder="admin"
+                      required={requiresCredentials}
+                    />
+                  </label>
+                  <label>
+                    Senha
+                    <input
+                      type="password"
+                      name="password"
+                      value={routerConfig.password}
+                      onChange={handleRouterChange}
+                      placeholder="••••••••"
+                      required={requiresCredentials}
+                    />
+                  </label>
+                </>
+              ) : null}
             </div>
+            {!requiresCredentials ? (
+              <p className="hint">
+                Credenciais locais nao sao necessarias neste modo. O monitoramento
+                usa SNMP read-only (se disponivel) ou coleta passiva via agente local.
+              </p>
+            ) : null}
+            {routerConfig.snmp_enabled ? (
+              <p className="hint">
+                SNMP read-only ativo. Garanta que o roteador permita consultas na rede local.
+              </p>
+            ) : (
+              <p className="hint">SNMP desativado. Ative para coletar metricas.</p>
+            )}
             <div className="form-actions">
               <button className="primary" type="submit">
-                Salvar configurações
+                Salvar configuracoes
               </button>
               <span className={`hint ${routerStatus.type}`}>{routerStatus.message}</span>
             </div>
@@ -261,7 +445,127 @@ export default function App() {
           </form>
         </div>
 
-        <div className="panel">
+        <div className="panel" id="router-monitor">
+          <div className="panel-header">
+            <div>
+              <h2>Monitoramento do roteador</h2>
+              <p>Coleta via SNMP read-only quando habilitado.</p>
+            </div>
+            <button
+              className="ghost"
+              type="button"
+              onClick={fetchRouterMetrics}
+              disabled={routerMetricsStatus.type === "loading" || !routerConfig.router_ip}
+            >
+              {routerMetricsStatus.type === "loading" ? "Coletando..." : "Coletar agora"}
+            </button>
+          </div>
+          {routerMetrics ? (
+            <>
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <span>Status</span>
+                  <strong className={`status-text ${statusClass(routerMetrics.status)}`}>
+                    {statusLabel(routerMetrics.status)}
+                  </strong>
+                </div>
+                <div className="stat-card">
+                  <span>Modo</span>
+                  <strong>{routerMetrics.monitoring_mode ?? "—"}</strong>
+                </div>
+                <div className="stat-card">
+                  <span>Uptime</span>
+                  <strong>{routerMetrics.uptime ?? "—"}</strong>
+                </div>
+                <div className="stat-card">
+                  <span>Interfaces</span>
+                  <strong>
+                    {routerMetrics.interfaces_up ?? 0}/{routerMetrics.interface_count ?? 0}
+                  </strong>
+                </div>
+                <div className="stat-card">
+                  <span>Trafego total</span>
+                  <strong>
+                    {formatBytes(routerMetrics.total_in_octets)} /{" "}
+                    {formatBytes(routerMetrics.total_out_octets)}
+                  </strong>
+                </div>
+              </div>
+              <div className="status-row">
+                {routerMetrics.wan_status !== undefined && routerMetrics.wan_status !== null ? (
+                  <span className={`status-pill ${statusClass(routerMetrics.wan_status)}`}>
+                    WAN {statusLabel(routerMetrics.wan_status)}
+                  </span>
+                ) : null}
+                {routerMetrics.lan_status !== undefined && routerMetrics.lan_status !== null ? (
+                  <span className={`status-pill ${statusClass(routerMetrics.lan_status)}`}>
+                    LAN {statusLabel(routerMetrics.lan_status)}
+                  </span>
+                ) : null}
+                {routerMetrics.reachable !== undefined ? (
+                  <span className={`status-pill ${routerMetrics.reachable ? "ok" : "error"}`}>
+                    Ping {routerMetrics.reachable ? "ok" : "falhou"}
+                  </span>
+                ) : null}
+                {routerMetrics.latency_ms !== null && routerMetrics.latency_ms !== undefined ? (
+                  <span className="status-pill warn">
+                    Latencia {Number(routerMetrics.latency_ms).toFixed(0)} ms
+                  </span>
+                ) : null}
+              </div>
+              {routerMetrics.snmp_error ? (
+                <p className="hint error">SNMP erro: {routerMetrics.snmp_error}</p>
+              ) : null}
+              {routerMetrics.snmp_limited ? (
+                <p className="hint warn">
+                  SNMP limitado ao system MIB. Interfaces nao expostas.
+                </p>
+              ) : null}
+              {routerMetrics.monitoring_mode === "snmp" ? (
+                routerInterfaces.length === 0 ? (
+                  <p className="empty">Nenhuma interface SNMP encontrada.</p>
+                ) : (
+                  <div className="table table-interfaces">
+                    <div className="table-row header">
+                      <span>Interface</span>
+                      <span>Status</span>
+                      <span>Entrada</span>
+                      <span>Saida</span>
+                    </div>
+                    {routerInterfaces.slice(0, 8).map((iface) => (
+                      <div className="table-row" key={iface.index ?? iface.name}>
+                        <span>{iface.name}</span>
+                        <span className={`status-pill ${statusClass(iface.oper_status)}`}>
+                          {statusLabel(iface.oper_status)}
+                        </span>
+                        <span>{formatBytes(iface.in_octets)}</span>
+                        <span>{formatBytes(iface.out_octets)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <p className="hint">
+                  Monitoramento passivo ativo. Sem interfaces SNMP disponiveis.
+                </p>
+              )}
+              {routerMetrics.collected_at ? (
+                <p className="hint">Ultima coleta: {formatDateTime(routerMetrics.collected_at)}</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="empty">
+              {snmpConfigured
+                ? "Sem dados de monitoramento. Tente coletar novamente."
+                : "SNMP desativado ou nao configurado."}
+            </p>
+          )}
+          {routerMetricsStatus.message ? (
+            <p className={`hint ${routerMetricsStatus.type}`}>{routerMetricsStatus.message}</p>
+          ) : null}
+        </div>
+
+        <div className="panel" id="devices">
           <div className="panel-header">
             <div>
               <h2>Dispositivos cadastrados</h2>
@@ -289,7 +593,7 @@ export default function App() {
           {errors.devices ? <p className="hint error">{errors.devices}</p> : null}
         </div>
 
-        <div className="panel wide">
+        <div className="panel wide" id="traffic">
           <div className="panel-header">
             <div>
               <h2>Amostras de tráfego</h2>

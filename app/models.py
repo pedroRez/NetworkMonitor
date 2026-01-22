@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -39,5 +39,9 @@ class RouterConfig(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     router_ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
-    username: Mapped[str] = mapped_column(String(120))
-    password: Mapped[str] = mapped_column(String(255))
+    access_mode: Mapped[str] = mapped_column(String(20), default="local_admin")
+    snmp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    snmp_community: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    snmp_port: Mapped[int] = mapped_column(Integer, default=161)
+    username: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    password: Mapped[str | None] = mapped_column(String(255), nullable=True)

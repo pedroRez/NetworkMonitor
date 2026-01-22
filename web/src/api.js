@@ -32,6 +32,7 @@ export const getHealth = () => request("/health");
 export const getDevices = () => request("/devices");
 export const getTraffic = () => request("/traffic");
 export const getRouterConfig = () => request("/router-config");
+export const getRouterMetrics = () => request("/router-metrics");
 export const saveRouterConfig = (payload) =>
   request("/router-config", {
     method: "PUT",

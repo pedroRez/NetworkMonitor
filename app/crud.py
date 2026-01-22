@@ -47,6 +47,10 @@ def upsert_router_config(db: Session, config: models.RouterConfig) -> models.Rou
     existing = get_router_config(db)
     if existing:
         existing.router_ip = config.router_ip
+        existing.access_mode = config.access_mode
+        existing.snmp_enabled = config.snmp_enabled
+        existing.snmp_community = config.snmp_community
+        existing.snmp_port = config.snmp_port
         existing.username = config.username
         existing.password = config.password
         db.commit()
