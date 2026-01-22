@@ -32,3 +32,12 @@ class TrafficSample(Base):
     bytes_out: Mapped[int] = mapped_column(Integer, default=0)
 
     device: Mapped[Device] = relationship(back_populates="traffic_samples")
+
+
+class RouterConfig(Base):
+    __tablename__ = "router_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    router_ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(120))
+    password: Mapped[str] = mapped_column(String(255))

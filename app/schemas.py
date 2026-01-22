@@ -36,3 +36,18 @@ class TrafficSample(TrafficSampleBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     timestamp: datetime
+
+
+class RouterConfigBase(BaseModel):
+    router_ip: str
+    username: str
+    password: str
+
+
+class RouterConfigCreate(RouterConfigBase):
+    pass
+
+
+class RouterConfig(RouterConfigBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int

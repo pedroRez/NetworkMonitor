@@ -48,6 +48,15 @@ uvicorn app.main:app --reload
 
 A API estará em `http://127.0.0.1:8000`.
 
+## Interface de configuração do roteador
+
+Abra `http://127.0.0.1:8000/setup` para inserir o IP do roteador, usuário e senha.
+Esses dados são salvos na tabela `router_config` para o coletor SNMP/integração
+posterior usar como credenciais de acesso.
+
+> Observação: neste MVP as credenciais são armazenadas em texto puro. Em produção,
+> use um cofre de segredos ou criptografia em repouso.
+
 ## Próximos passos sugeridos
 
 - Adicionar um coletor SNMP real (ex.: `pysnmp`) para gravar amostras em `traffic_samples`.

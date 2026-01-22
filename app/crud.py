@@ -37,3 +37,22 @@ def get_traffic_samples(db: Session, device_id: int | None = None) -> list[model
     if device_id:
         query = query.filter(models.TrafficSample.device_id == device_id)
     return query.all()
+
+
+def get_router_config(db: Session) -> models.RouterConfig | None:
+    return db.query(models.RouterConfig).first()
+
+
+def upsert_router_config(db: Session, config: models.RouterConfig) -> models.RouterConfig:
+    existing = get_router_config(db)
+    if existing:
+        existing.router_ip = config.router_ip
+        existing.username = config.username
+        existing.password = config.password
+        db.commit()
+        db.refresh(existing)
+        return existing
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
