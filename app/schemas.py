@@ -85,3 +85,8 @@ class RouterConfigCreate(RouterConfigBase):
 class RouterConfig(RouterConfigBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+
+
+class DiscoveryRequest(BaseModel):
+    mode: Literal["arp_only", "ping_sweep"] = "ping_sweep"
+    subnet_cidr: str | None = None

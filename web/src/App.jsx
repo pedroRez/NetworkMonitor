@@ -2,6 +2,7 @@
 import {
   getDevices,
   getHealth,
+  discoverDevices,
   getRouterConfig,
   getRouterMetrics,
   getTraffic,
@@ -85,6 +86,10 @@ export default function App() {
   });
   const [routerMetrics, setRouterMetrics] = useState(null);
   const [routerMetricsStatus, setRouterMetricsStatus] = useState({
+    type: "idle",
+    message: ""
+  });
+  const [discoverStatus, setDiscoverStatus] = useState({
     type: "idle",
     message: ""
   });
@@ -180,6 +185,31 @@ export default function App() {
     setErrors(nextErrors);
     setLastUpdated(new Date());
     setLoading(false);
+  };
+
+  const handleDiscoverDevices = async () => {
+    if (!routerConfig.router_ip) {
+      setDiscoverStatus({
+        type: "error",
+        message: "Informe o IP do roteador antes de descobrir dispositivos."
+      });
+      return;
+    }
+    setDiscoverStatus({ type: "loading", message: "Descobrindo dispositivos..." });
+    try {
+      const discovered = await discoverDevices({ mode: "ping_sweep" });
+      setDevices(discovered);
+      setDiscoverStatus({
+        type: "success",
+        message: `${discovered.length} dispositivos encontrados.`
+      });
+      setLastUpdated(new Date());
+    } catch (error) {
+      setDiscoverStatus({
+        type: "error",
+        message: error?.message ?? "Erro ao descobrir dispositivos."
+      });
+    }
   };
 
   useEffect(() => {
@@ -571,6 +601,14 @@ export default function App() {
               <h2>Dispositivos cadastrados</h2>
               <p>Inventário com IP, MAC e nome amigável.</p>
             </div>
+            <button
+              className="ghost"
+              type="button"
+              onClick={handleDiscoverDevices}
+              disabled={discoverStatus.type === "loading"}
+            >
+              {discoverStatus.type === "loading" ? "Descobrindo..." : "Descobrir agora"}
+            </button>
           </div>
           {devices.length === 0 ? (
             <p className="empty">Nenhum dispositivo cadastrado ainda.</p>
@@ -591,6 +629,9 @@ export default function App() {
             </div>
           )}
           {errors.devices ? <p className="hint error">{errors.devices}</p> : null}
+          {discoverStatus.message ? (
+            <p className={`hint ${discoverStatus.type}`}>{discoverStatus.message}</p>
+          ) : null}
         </div>
 
         <div className="panel wide" id="traffic">

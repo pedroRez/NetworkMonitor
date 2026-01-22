@@ -1,13 +1,14 @@
 import logging
 import os
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app import crud, models, schemas
 from app.db import engine, get_db, test_db_connection
+from app.discovery import DiscoveryError, discover_devices
 from app.snmp import SnmpError, collect_snmp_metrics, passive_probe
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,24 @@ def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db)):
         name=payload.name,
     )
     return crud.create_device(db, device)
+
+
+@app.post("/devices/discover", response_model=list[schemas.Device])
+def discover_network_devices(
+    payload: schemas.DiscoveryRequest = Body(default=schemas.DiscoveryRequest()),
+    db: Session = Depends(get_db),
+):
+    config = crud.get_router_config(db)
+    router_ip = config.router_ip if config else None
+    try:
+        discovered = discover_devices(
+            router_ip=router_ip,
+            subnet_cidr=payload.subnet_cidr,
+            mode=payload.mode,
+        )
+    except DiscoveryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return crud.upsert_discovered_devices(db, discovered)
 
 
 @app.patch("/devices/{device_id}", response_model=schemas.Device)

@@ -18,6 +18,14 @@ def get_device(db: Session, device_id: int) -> models.Device | None:
     return db.query(models.Device).filter(models.Device.id == device_id).first()
 
 
+def get_device_by_ip(db: Session, ip_address: str) -> models.Device | None:
+    return db.query(models.Device).filter(models.Device.ip_address == ip_address).first()
+
+
+def get_device_by_mac(db: Session, mac_address: str) -> models.Device | None:
+    return db.query(models.Device).filter(models.Device.mac_address == mac_address).first()
+
+
 def update_device_name(db: Session, device: models.Device, name: str | None) -> models.Device:
     device.name = name
     db.commit()
@@ -60,3 +68,29 @@ def upsert_router_config(db: Session, config: models.RouterConfig) -> models.Rou
     db.commit()
     db.refresh(config)
     return config
+
+
+def upsert_discovered_devices(
+    db: Session, discovered: list[tuple[str, str]]
+) -> list[models.Device]:
+    saved: list[models.Device] = []
+    for ip_address, mac_address in discovered:
+        existing_ip = get_device_by_ip(db, ip_address)
+        existing_mac = get_device_by_mac(db, mac_address)
+
+        if existing_ip and existing_mac and existing_ip.id != existing_mac.id:
+            continue
+
+        device = existing_ip or existing_mac
+        if device:
+            device.ip_address = ip_address
+            device.mac_address = mac_address
+        else:
+            device = models.Device(ip_address=ip_address, mac_address=mac_address)
+            db.add(device)
+        saved.append(device)
+
+    db.commit()
+    for device in saved:
+        db.refresh(device)
+    return saved

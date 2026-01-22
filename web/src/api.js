@@ -38,3 +38,8 @@ export const saveRouterConfig = (payload) =>
     method: "PUT",
     body: JSON.stringify(payload)
   });
+export const discoverDevices = (payload = {}) =>
+  request("/devices/discover", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
